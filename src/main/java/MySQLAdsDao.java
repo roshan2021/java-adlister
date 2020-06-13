@@ -1,68 +1,73 @@
+import com.mysql.cj.jdbc.Driver;
+
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
 
-import com.mysql.cj.jdbc.Driver;
-
-//add implements Ads interface
-public class MySQLAdsDao implements Ads{
+public class MySQLAdsDao implements Ads {
     private Connection connection = null;
-    public MySQLAdsDao(Config config){
-        try{
+
+    public MySQLAdsDao(Config config) {
+        try {
             DriverManager.registerDriver(new Driver());
             connection = DriverManager.getConnection(
                     config.getUrl(),
                     config.getUser(),
                     config.getPassword()
             );
-        } catch (SQLException throwables) {
-            throwables.printStackTrace();
+        } catch (SQLException e) {
+            throw new RuntimeException("Error connecting to the database!", e);
         }
     }
 
     @Override
     public List<Ad> all() {
-        List<Ad> ads = new ArrayList<>();
+        Statement stmt = null;
         try {
-            Statement statement = connection.createStatement();
-            ResultSet rs = statement.executeQuery("SELECT * FROM ads");
-            while(rs.next()){
-                // translating the rs into a java obj
-                ads.add(new Ad(
-                        rs.getLong("id"),
-                        rs.getLong("user_id"),
-                        rs.getString("title"),
-                        rs.getString("description")
-                ));
-
-                //Tomcat Output below for testing purposes
-//                System.out.println("rs.getLong(\"id\") = " + rs.getLong("id"));
-//                System.out.println("rs.getString(\"title\") = " + rs.getString("title"));
-//                System.out.println("rs.getString(\"description\") = " + rs.getString("description"));
-            }
-        } catch (SQLException throwables) {
-            throwables.printStackTrace();
+            stmt = connection.createStatement();
+            ResultSet rs = stmt.executeQuery("SELECT * FROM ads");
+            return createAdsFromResults(rs);
+        } catch (SQLException e) {
+            throw new RuntimeException("Error retrieving all ads.", e);
         }
-        return ads;
     }
-
-
 
     @Override
     public Long insert(Ad ad) {
-        String query = String.format("insert into ads (user_id, title, description) values (%s, '%s', '%s')", ad.getUserId(), ad.getTitle(), ad.getDescription());
-        System.out.println("query = " + query);
-
-        try{
-            Statement statement = connection.createStatement();
-            statement.executeUpdate(query, Statement.RETURN_GENERATED_KEYS);
-            ResultSet rs = statement.getGeneratedKeys();
+        try {
+            Statement stmt = connection.createStatement();
+            stmt.executeUpdate(createInsertQuery(ad), Statement.RETURN_GENERATED_KEYS);
+            ResultSet rs = stmt.getGeneratedKeys();
             rs.next();
-            return rs.getLong("1");
-
-        } catch (SQLException throwables) {
-            throwables.printStackTrace();
+            return rs.getLong(1);
+        } catch (SQLException e) {
+            throw new RuntimeException("Error creating a new ad.", e);
         }
-        return null;
+    }
+
+    private String createInsertQuery(Ad ad) {
+        String query = String.format("INSERT INTO ads(user_id, title, description) VALUES (%s,'%s','%s')",
+                ad.getUserId(), ad.getTitle(), ad.getDescription());
+        return query;
+    }
+
+    private Ad extractAd(ResultSet rs) throws SQLException {
+        return new Ad(
+                rs.getLong("id"),
+                rs.getLong("user_id"),
+                rs.getString("title"),
+                rs.getString("description")
+        );
+    }
+
+    private List<Ad> createAdsFromResults(ResultSet rs) throws SQLException {
+        List<Ad> ads = new ArrayList<>();
+        while (rs.next()) {
+            ads.add(extractAd(rs));
+        }
+        return ads;
     }
 }
